@@ -63,6 +63,7 @@ def is_prime_miller(n):
 
     return True
 
+# Make a random prime with this many digits.
 def random_prime(num_digits):
     begin = 10**(num_digits - 1)
     end = 10**num_digits
