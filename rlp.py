@@ -1,5 +1,6 @@
 
 # Ethereum Recursive Length Prefix encoding and decoding.
+# https://eth.wiki/fundamentals/rlp
 
 # Convert an integer to big-endian with initial zero bytes stripped off.
 def _int_to_bytearray(n):
@@ -70,14 +71,23 @@ def decode_rlp(b):
 
 
 def _test(a):
-    print(a)
+    # print(a)
     b = encode_rlp(a)
-    print(b)
+    print(a, "=>", b)
     c, size = decode_rlp(b)
-    print(c, size)
+    # print(c, size)
 
     print(c == a, size == len(b))
 
 if __name__ == "__main__":
-    _test([bytearray([0])]*44)
+    # https://eth.wiki/fundamentals/rlp#examples
+    _test(b"dog")
+    _test([b"cat", b"dog"])
+    _test(b"")  # also null
+    _test(b"\x00")
+    _test(b"")  # "the integer 0" ?
+    _test(b"\x0F")
+    _test(b"\x04\x00")
+    _test([ [], [[]], [ [], [[]] ] ])
+    _test(b"Lorem ipsum dolor sit amet, consectetur adipisicing elit")
 
