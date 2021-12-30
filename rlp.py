@@ -18,21 +18,21 @@ def encode_rlp(data):
     if isinstance(data, bytearray) or isinstance(data, bytes):
         if len(data) == 1 and data[0] < 0x80:
             # Byte is its own encoding. First byte is [0x00, 0x7F].
-            return data
+            return bytes(data)
         if len(data) <= 55:
             # Simple length plus data. First byte is [0x80, 0xB7].
-            return bytearray([0x80 + len(data)]) + data
+            return bytes([0x80 + len(data)]) + data
         # Length of length, then length, then data. First byte is [0xB8, 0xBF].
         length = _int_to_bytearray(len(data))
-        return bytearray([0xB7 + len(length)]) + length + data
+        return bytes([0xB7 + len(length)]) + length + data
     elif isinstance(data, list) or isinstance(data, tuple):
         contents = b"".join(encode_rlp(x) for x in data)
         if len(contents) <= 55:
             # Simple length plus data. First byte is [0xC0, 0xF7].
-            return bytearray([0xC0 + len(contents)]) + contents
+            return bytes([0xC0 + len(contents)]) + contents
         # Length of length, then length, then data. First byte is [0xF8, 0xFF].
         length = _int_to_bytearray(len(contents))
-        return bytearray([0xF7 + len(length)]) + length + contents
+        return bytes([0xF7 + len(length)]) + length + contents
     else:
         raise Exception("can only RLP-encode bytearray or list")
 
