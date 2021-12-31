@@ -3,7 +3,7 @@
 # https://eth.wiki/en/fundamentals/patricia-tree
 
 from rlp import encode_rlp, decode_rlp
-from ethsha3 import ethsha3
+from ethsha3 import ethsha3, ETHSHA3_LENGTH
 from testing import random_bytes
 
 NO_HASH = b""
@@ -52,7 +52,7 @@ class MerklePatriciaTrie:
         if root == NO_HASH:
             v = [NO_HASH]*16
         else:
-            v = decode_rlp(self.key_value_store.get(root))[0]
+            v = decode_rlp(self._get_from_store(root))
 
         if nybble_index == len(key)*2:
             # Done recursing, set value.
@@ -68,8 +68,7 @@ class MerklePatriciaTrie:
             v[nybble] = new_root
 
         rlp_v = encode_rlp(v)
-        rlp_root = ethsha3(rlp_v)
-        self.key_value_store.set(rlp_root, rlp_v)
+        rlp_root = self._put_in_store(rlp_v)
 
         return rlp_root
 
@@ -80,7 +79,7 @@ class MerklePatriciaTrie:
             # Value not in data structure.
             return None
 
-        v = decode_rlp(self.key_value_store.get(root))[0]
+        v = decode_rlp(self._get_from_store(root))
 
         if nybble_index == len(key)*2:
             # Done recursing, find value.
@@ -89,6 +88,20 @@ class MerklePatriciaTrie:
             nybble = _get_nybble(key, nybble_index)
             new_root = v[nybble]
             return self._get(key, new_root, nybble_index + 1)
+
+    def _get_from_store(self, k):
+        if len(k) < ETHSHA3_LENGTH:
+            return k
+        else:
+            return self.key_value_store.get(k)
+
+    def _put_in_store(self, k):
+        if len(k) < ETHSHA3_LENGTH:
+            return k
+        else:
+            h = ethsha3(k)
+            self.key_value_store.set(h, k)
+            return h
 
 # Straightforward hash table for bytes keys and values.
 class HashTable:

@@ -39,7 +39,7 @@ def encode_rlp(data):
 
 # Decodes a bytearray that was encoded by RLP. Returns a hierarchy of
 # bytearrays and lists, and the number of bytes consumed.
-def decode_rlp(b):
+def _decode_rlp(b):
     # Byte array.
     if b[0] <= 0x7F:
         return b[:1], 1
@@ -63,18 +63,22 @@ def decode_rlp(b):
 
     items = []
     while length > 0:
-        item, size = decode_rlp(b[index:])
+        item, size = _decode_rlp(b[index:])
         index += size
         length -= size
         items.append(item)
     return items, index
 
+# Decodes a bytearray that was encoded by RLP. Returns a hierarchy of
+# bytearrays and lists.
+def decode_rlp(b):
+    return _decode_rlp(b)[0]
 
 def _test(a):
     # print(a)
     b = encode_rlp(a)
     print(a, "=>", b)
-    c, size = decode_rlp(b)
+    c, size = _decode_rlp(b)
     # print(c, size)
 
     print(c == a, size == len(b))
