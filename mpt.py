@@ -2,7 +2,7 @@
 # Implementation of Merkle Patricia Trie.
 # https://eth.wiki/en/fundamentals/patricia-tree
 
-from rlp import encode_rlp, decode_rlp
+import rlp
 from ethsha3 import ethsha3, ETHSHA3_LENGTH
 from testing import random_bytes
 
@@ -52,7 +52,7 @@ class MerklePatriciaTrie:
         if root == NO_HASH:
             v = [NO_HASH]*16
         else:
-            v = decode_rlp(self._get_from_store(root))
+            v = rlp.decode(self._get_from_store(root))
 
         if nybble_index == len(key)*2:
             # Done recursing, set value.
@@ -67,7 +67,7 @@ class MerklePatriciaTrie:
             new_root = self._set(key, old_root, nybble_index + 1, value)
             v[nybble] = new_root
 
-        rlp_v = encode_rlp(v)
+        rlp_v = rlp.encode(v)
         rlp_root = self._put_in_store(rlp_v)
 
         return rlp_root
@@ -79,10 +79,10 @@ class MerklePatriciaTrie:
             # Value not in data structure.
             return None
 
-        v = decode_rlp(self._get_from_store(root))
+        v = rlp.decode(self._get_from_store(root))
 
         if nybble_index == len(key)*2:
-            # Done recursing, find value.
+            # Done recursing, find value. TODO make sure size of v is correct.
             return v[-1]
         else:
             nybble = _get_nybble(key, nybble_index)
@@ -102,6 +102,43 @@ class MerklePatriciaTrie:
             h = ethsha3(k)
             self.key_value_store.set(h, k)
             return h
+
+    def items(self):
+        items = []
+        self._fill_items(items, self.root, b"", True)
+        return items
+
+    def _fill_items(self, items, r, path, is_byte):
+        if r != NO_HASH:
+            v = rlp.decode(self._get_from_store(r))
+            if len(v) == 17 and is_byte:
+                items.append((path, v[-1]))
+            for i in range(16):
+                if is_byte:
+                    new_path = path + bytes([i << 4])
+                else:
+                    new_path = path[:-1] + bytes([path[-1] | i])
+
+                self._fill_items(items, v[i], new_path, not is_byte)
+
+    def __repr__(self):
+        parts = []
+        self._fill_repr(parts, self.root, b"", True)
+        return "\n".join(parts)
+
+    def _fill_repr(self, parts, r, path, is_byte):
+        if r != NO_HASH:
+            v = rlp.decode(self._get_from_store(r))
+            if len(v) == 17 and is_byte:
+                parts.append(path.hex() + " = " + v[-1].hex())
+            for i in range(16):
+                if is_byte:
+                    new_path = path + bytes([i << 4])
+                else:
+                    new_path = path[:-1] + bytes([path[-1] | i])
+
+                self._fill_repr(parts, v[i], new_path, not is_byte)
+
 
 # Straightforward hash table for bytes keys and values.
 class HashTable:

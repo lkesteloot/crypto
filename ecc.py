@@ -23,6 +23,16 @@ class EllipticCurve:
     def value(self, value):
         return EllipticCurveValue(self, value)
 
+    @staticmethod
+    def secp256k1():
+        # https://en.bitcoin.it/wiki/Secp256k1
+        p = 2**256 - 2**32 - 2**9 - 2**8 - 2**7 - 2**6 - 2**4 - 1
+        f = Field(p)
+        Gx = f.value(0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798)
+        Gy = f.value(0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8)
+
+        return EllipticCurve(f, 0, 7, (Gx, Gy))
+
 class EllipticCurveValue:
     # Value is tuple of two FieldValue
     def __init__(self, e, value):
@@ -106,17 +116,8 @@ class EllipticCurveValue:
     def __repr__(self):
         return "(" + repr(self.value[0]) + "," + repr(self.value[1]) + ")"
 
-def make_secp256k1():
-    # https://en.bitcoin.it/wiki/Secp256k1
-    p = 2**256 - 2**32 - 2**9 - 2**8 - 2**7 - 2**6 - 2**4 - 1
-    f = Field(p)
-    Gx = f.value(0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798)
-    Gy = f.value(0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8)
-
-    return EllipticCurve(f, 0, 7, (Gx, Gy))
-
 if __name__ == "__main__":
-    e = make_secp256k1()
+    e = EllipticCurve.secp256k1()
 
     print(e.G, e.G.is_on_curve())
     g2 = e.G + e.G
