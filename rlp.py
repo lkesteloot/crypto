@@ -71,7 +71,22 @@ def _decode(b):
 # Decodes a bytearray that was encoded by RLP. Returns a hierarchy of
 # bytearrays and lists.
 def decode(b):
-    return _decode(b)[0]
+    data, size = _decode(b)
+    assert size == len(b)
+    return data
+
+def dump_data(d, indent=""):
+    if isinstance(d, list) or isinstance(d, tuple):
+        print("%sList (%d):" % (indent, len(d)))
+        for i in range(len(d)):
+            dump_data(d[i], indent + "  ")
+    elif isinstance(d, bytes) or isinstance(d, bytearrays):
+        h = d.hex()
+        if len(h) > 64:
+            h = h[:64] + "..."
+        print("%sBinary (%d bytes, 0x%s)" % (indent, len(d), h))
+    else:
+        print(indent + "Unknown type: " + str(type(d)))
 
 def _test(a):
     # print(a)
