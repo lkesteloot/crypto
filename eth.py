@@ -200,7 +200,7 @@ class EthereumVirtualMachine:
         private_key = random.randrange(1, self.SECP256K1.f.size)
         public_key = self.SECP256K1.G*private_key
         # TODO not sure this is right, can't find formal definition of ECDSAPUBKEY:
-        public_key_bytes = public_key.value[0].value.to_bytes(32, "big") + public_key.value[1].value.to_bytes(32, "big")
+        public_key_bytes = public_key.x.value.to_bytes(32, "big") + public_key.y.value.to_bytes(32, "big")
         address = ethsha3(public_key_bytes)[-20:] # Right-most 160 bits.
         print("Just created address 0x" + address.hex())
 

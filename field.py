@@ -40,8 +40,19 @@ class Field:
 # Value in a finite field.
 class FieldValue:
     def __init__(self, f, value):
+        if isinstance(value, FieldValue):
+            value = value.value
+        assert isinstance(value, int)
+        assert value >= 0
         self.f = f
-        self.value = value
+        self.value = value % self.f.size
+
+    def invert(self):
+        return self.f.invert(self.value)
+
+    def sqrt(self):
+        assert self.f.size % 4 == 3
+        return self**((self.f.size + 1)//4)
 
     def __repr__(self):
         return str(self.value)
@@ -51,6 +62,9 @@ class FieldValue:
             o = self.f.value(o)
         self._checkField(o)
         return FieldValue(self.f, self.f.add(self.value, o.value))
+
+    def __radd__(self, o):
+        return self + o
 
     def __sub__(self, o):
         if isinstance(o, int):
@@ -73,8 +87,39 @@ class FieldValue:
         self._checkField(o)
         return FieldValue(self.f, self.f.divide(self.value, o.value))
 
+    def __rtruediv__(self, o):
+        assert isinstance(o, int)
+        o = self.f.value(o)
+        return o / self
+
+    def __mod__(self, o):
+        if isinstance(o, int):
+            o = self.f.value(o)
+        self._checkField(o)
+        return FieldValue(self.f, self.value % o.value)
+
     def __neg__(self):
         return FieldValue(self.f, self.f.negate(self.value))
+
+    def __pow__(self, o):
+        if isinstance(o, FieldValue):
+            o = o.value
+        assert isinstance(o, int)
+        assert o >= 0
+
+        result = self.f.value(1)
+        m = self
+
+        while o != 0:
+            if (o & 1) != 0:
+                result = result*m
+
+            o >>= 1
+            m = m*m
+
+        i = self.value
+
+        return result
 
     def __eq__(self, o):
         if isinstance(o, int):
