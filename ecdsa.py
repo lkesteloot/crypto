@@ -12,14 +12,23 @@ from field import Field
 V_VALUE_EVEN = 27
 V_VALUE_ODD = 28
 
-def sign_message(ec, pr, e):
+# Compute the hash of the message.
+def _compute_z(ec, e):
     if isinstance(e, bytes) or isinstance(e, bytearray):
         e = int.from_bytes(ethsha3.ethsha3(e), "big")
+    assert isinstance(e, int)
 
     z = e
     z_bits = math.ceil(math.log2(z))
     n_bits = math.ceil(math.log2(ec.n))
     assert z_bits <= n_bits
+
+    return z
+
+# Sign the message "e" with the specified private key. The message can either
+# by bytes, which will be hashed, or the integer hash itself. Returns (v, r, s).
+def sign_message(ec, pr, e):
+    z = _compute_z(ec, e)
 
     while True:
         k = random.randrange(1, ec.n)
@@ -35,14 +44,10 @@ def sign_message(ec, pr, e):
 
         return v, r, s
 
+# Verify the signature of the message "e" with the specified public key.
+# The message can either by bytes, which will be hashed, or the integer hash itself.
 def verify_signature(ec, pu, e, v, r, s):
-    if isinstance(e, bytes) or isinstance(e, bytearray):
-        e = int.from_bytes(ethsha3.ethsha3(e), "big")
-
-    z = e
-    z_bits = math.ceil(math.log2(z))
-    n_bits = math.ceil(math.log2(ec.n))
-    assert z_bits <= n_bits
+    z = _compute_z(ec, e)
 
     u1 = z/s
     u2 = r/s
@@ -50,14 +55,10 @@ def verify_signature(ec, pu, e, v, r, s):
 
     return r == f.value(p2.x)
 
+# Recover the public key of the signature. The message can either by bytes,
+# which will be hashed, or the integer hash itself.
 def recover_public_key(ec, e, v, r, s):
-    if isinstance(e, bytes) or isinstance(e, bytearray):
-        e = int.from_bytes(ethsha3.ethsha3(e), "big")
-
-    z = e
-    z_bits = math.ceil(math.log2(z))
-    n_bits = math.ceil(math.log2(ec.n))
-    assert z_bits <= n_bits
+    z = _compute_z(ec, e)
 
     x1 = ec.f.value(r)
     y1 = ec.find_y_for_x(x1, v == V_VALUE_EVEN)
