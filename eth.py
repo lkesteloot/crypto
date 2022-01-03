@@ -13,6 +13,7 @@ INDENT = "    "
 
 STRING_KEYS = set(["extraData"])
 DATE_KEYS = set(["timestamp"])
+PRICE_KEYS = set(["gasPrice", "value"])
 
 def all_ascii(b):
     for ch in b:
@@ -24,14 +25,28 @@ def dump_string(v, key):
     if isinstance(v, bytes) or isinstance(v, bytearray):
         if key in STRING_KEYS and all_ascii(v):
             v = '"' + v.decode("ascii") + '"'
+        elif len(v) == 0:
+            v = "(empty)"
         else:
             v = v.hex()
             if len(v) > 64:
                 v = v[:64] + "..."
             v = "0x" + v
-    if isinstance(v, int):
+    elif isinstance(v, int):
         if key in DATE_KEYS:
-            v = datetime.fromtimestamp(v)
+            if v == 0:
+                v = "Missing timestamp"
+            else:
+                v = datetime.fromtimestamp(v)
+        elif key in PRICE_KEYS:
+            exp = 0
+            while v > 0 and v % 1000 == 0:
+                v //= 1000
+                exp += 3
+            if exp > 0:
+                v = "{:,}e{} Wei".format(v, exp)
+            else:
+                v = "{:,} Wei".format(v)
 
     return str(v)
 
@@ -80,14 +95,28 @@ class Account:
                 v[2], v[3])
 
 class Transaction:
-    def __init__(self, from_account, to_account, amount):
-        assert isinstance(from_account, bytes)
-        assert isinstance(to_account, bytes)
-        assert isinstance(amount, int)
+    def __init__(self, nonce, gasPrice, gasLimit, toAddress, value, data, v, r, s):
+        self.nonce = nonce
+        self.gasPrice = gasPrice
+        self.gasLimit = gasLimit
+        self.toAddress = toAddress
+        self.value = value
+        self.data = data
+        self.v = v
+        self.r = r
+        self.s = s
 
-        self.from_account = from_account
-        self.to_account = to_account
-        self.amount = amount
+    @staticmethod
+    def from_list(v):
+        assert isinstance(v, list) or isinstance(v, tuple)
+        assert len(v) == 9
+
+        return Transaction(rlp.decode_int(v[0]), rlp.decode_int(v[1]), rlp.decode_int(v[2]), v[3],
+                rlp.decode_int(v[4]), v[5], v[6], v[7], v[8])
+
+    def dump(self, indent=""):
+        for key, value in vars(self).items():
+            print("%s%s = %s" % (indent, key, dump_string(value, key)))
 
 class BlockHeader:
     def __init__(self, parentHash, ommersHash, beneficiary, stateRoot, transactionsRoot,
@@ -125,16 +154,10 @@ class BlockHeader:
 
 class Block:
     # https://ethereum.org/en/developers/docs/blocks/
-    def __init__(self, header, previous_block, state, transactions):
+    def __init__(self, header, transactions, ommers):
         self.header = header
-        # TODO should previous_block be a block or be hash of previous block?
-        assert previous_block is None or isinstance(previous_block, Block)
-        self.previous_block = previous_block
-        # TODO this state is mutable, so really we should take the has and be able
-        # to look up the hash somewhere.
-        self.state = state
-        # TODO don't store these.
         self.transactions = transactions
+        self.ommers = ommers
 
     @staticmethod
     def decode(b):
@@ -147,12 +170,20 @@ class Block:
         assert len(v) == 3
 
         header = BlockHeader.from_list(v[0])
+        transactions = [Transaction.from_list(t) for t in v[1]]
+        ommers = v[2]
 
-        return Block(header, None, None, None)
+        return Block(header, transactions, ommers)
 
     def dump(self, indent=""):
-        print("Header:")
+        print(indent + "Block %d:" % self.header.number)
+        indent += INDENT
+        print(indent + "Header:")
         self.header.dump(indent + INDENT)
+        print(indent + "Transactions (%d):" % len(self.transactions))
+        for transaction in self.transactions:
+            transaction.dump(indent + INDENT)
+        print(indent + "Ommers (%d):" % len(self.ommers))
 
 class EthereumVirtualMachine:
     def __init__(self):

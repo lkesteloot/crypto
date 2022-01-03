@@ -37,32 +37,32 @@ def encode(data):
 
 
 # Decodes a bytearray that was encoded by RLP. Returns a hierarchy of
-# bytearrays and lists, and the number of bytes consumed.
-def _decode(b):
+# bytearrays and lists, and the number of bytes consumed. Starts at byte "start".
+def _decode(b, start=0):
     # Byte array.
-    if b[0] <= 0x7F:
-        return b[:1], 1
-    if b[0] <= 0xB7:
-        length = b[0] - 0x80
-        return b[1:length + 1], length + 1
-    if b[0] <= 0xBF:
-        length_of_length = b[0] - 0xB7
-        length = decode_int(b[1:length_of_length + 1])
+    if b[start] <= 0x7F:
+        return b[start:start + 1], 1
+    if b[start] <= 0xB7:
+        length = b[start] - 0x80
+        return b[start + 1:start + length + 1], length + 1
+    if b[start] <= 0xBF:
+        length_of_length = b[start] - 0xB7
+        length = decode_int(b[start + 1:start + length_of_length + 1])
         size = length_of_length + 1 + length
-        return b[length_of_length + 1:size], size
+        return b[start + length_of_length + 1:start + size], size
 
     # List.
-    if b[0] <= 0xF7:
-        length = b[0] - 0xC0
+    if b[start] <= 0xF7:
+        length = b[start] - 0xC0
         index = 1
     else:
-        length_of_length = b[0] - 0xF7
-        length = decode_int(b[1:length_of_length + 1])
+        length_of_length = b[start] - 0xF7
+        length = decode_int(b[start + 1:start + length_of_length + 1])
         index = length_of_length + 1
 
     items = []
     while length > 0:
-        item, size = _decode(b[index:])
+        item, size = _decode(b, start + index)
         index += size
         length -= size
         items.append(item)
@@ -74,6 +74,15 @@ def decode(b):
     data, size = _decode(b)
     assert size == len(b)
     return data
+
+# Decode a sequence of RLP data structures, yielding each one.
+def decode_multiple(b):
+    index = 0
+
+    while index < len(b):
+        data, size = _decode(b, index)
+        yield data
+        index += size
 
 def dump_data(d, indent=""):
     if isinstance(d, list) or isinstance(d, tuple):

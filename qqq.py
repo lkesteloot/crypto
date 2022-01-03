@@ -2,11 +2,10 @@
 import rlp
 import eth
 
-block_binary = open("/Users/lk/go/bin/out-1", "rb").read()
+blocks_binary = open("/Users/lk/go/bin/out-all", "rb").read()
 
-x = rlp.decode(block_binary)
-rlp.dump_data(x)
-
-b = eth.Block.decode(block_binary)
-b.dump()
+for block_list in rlp.decode_multiple(blocks_binary):
+    b = eth.Block.from_list(block_list)
+    if len(b.transactions) > 0 and b.header.number == 46147:
+        b.dump()
 
