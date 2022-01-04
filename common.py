@@ -20,6 +20,14 @@ def xgcd(a, b):
         x0, x1 = x1, x0 - q * x1
     return b, x0, y0
 
+def fastxgcd(a, b):
+    """like xgcd(), but only the return value needed by find_inverse()"""
+    x0, x1 = 0, 1
+    while a != 0:
+        (q, a), b = divmod(b, a), a
+        x0, x1 = x1, x0 - q * x1
+    return x0
+
 def prime_factors(a):
     while a > 1:
         for i in range(2, a + 1):
@@ -32,7 +40,7 @@ def are_relatively_prime(a, b):
 
 # Find e such that ed % n = 1
 def find_inverse(d, n):
-    _, e, _ = xgcd(d, n)
+    e = fastxgcd(d, n)
     if e < 0:
         e += n
     return e

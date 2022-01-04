@@ -6,10 +6,13 @@ import random
 import ecc
 import rlp
 import mpt
+import ecdsa
 from ethsha3 import ethsha3
 
 WEI_PER_ETHER = 10**18
 INDENT = "    "
+
+SECP256K1 = ecc.EllipticCurve.secp256k1()
 
 STRING_KEYS = set(["extraData"])
 DATE_KEYS = set(["timestamp"])
@@ -49,6 +52,11 @@ def dump_string(v, key):
                 v = "{:,} Wei".format(v)
 
     return str(v)
+
+def public_key_to_address(pu):
+    # TODO not sure this is right, can't find formal definition of ECDSAPUBKEY:
+    public_key_bytes = pu.x.value.to_bytes(32, "big") + pu.y.value.to_bytes(32, "big")
+    return ethsha3(public_key_bytes)[-20:] # Right-most 160 bits.
 
 class Account:
     def __init__(self, nonce, balance, storage_root, code_hash):
@@ -105,6 +113,7 @@ class Transaction:
         self.v = v
         self.r = r
         self.s = s
+        self.sender = self.compute_sender()
 
     @staticmethod
     def from_list(v):
@@ -112,7 +121,27 @@ class Transaction:
         assert len(v) == 9
 
         return Transaction(rlp.decode_int(v[0]), rlp.decode_int(v[1]), rlp.decode_int(v[2]), v[3],
-                rlp.decode_int(v[4]), v[5], v[6], v[7], v[8])
+                rlp.decode_int(v[4]), v[5], rlp.decode_int(v[6]),
+                rlp.decode_int(v[7]), rlp.decode_int(v[8]))
+
+    def transaction_hash(self):
+        data = [
+                rlp.encode_int(self.nonce),
+                rlp.encode_int(self.gasPrice),
+                rlp.encode_int(self.gasLimit),
+                self.toAddress,
+                rlp.encode_int(self.value),
+                self.data,
+        ]
+        assert self.v == 27 or self.v == 28 # else we have to add three things to "data".
+        encoded_data = rlp.encode(data)
+        return ethsha3(encoded_data)
+
+    def compute_sender(self):
+        e = int.from_bytes(self.transaction_hash(), "big")
+        pu = ecdsa.recover_public_key(SECP256K1, e, self.v, self.r, self.s)
+        # assert ecdsa.verify_signature(SECP256K1, pu, e, self.v, self.r, self.s)
+        return public_key_to_address(pu)
 
     def dump(self, indent=""):
         for key, value in vars(self).items():
@@ -187,7 +216,6 @@ class Block:
 
 class EthereumVirtualMachine:
     def __init__(self):
-        self.SECP256K1 = ecc.EllipticCurve.secp256k1()
         self.hash_table = mpt.HashTable()
         self.head_block = Block(None, mpt.MerklePatriciaTrie(self.hash_table), [])
 
@@ -197,8 +225,8 @@ class EthereumVirtualMachine:
 
     # TODO clean up
     def make_new_account(self):
-        private_key = random.randrange(1, self.SECP256K1.f.size)
-        public_key = self.SECP256K1.G*private_key
+        private_key = random.randrange(1, SECP256K1.f.size)
+        public_key = SECP256K1.G*private_key
         # TODO not sure this is right, can't find formal definition of ECDSAPUBKEY:
         public_key_bytes = public_key.x.value.to_bytes(32, "big") + public_key.y.value.to_bytes(32, "big")
         address = ethsha3(public_key_bytes)[-20:] # Right-most 160 bits.

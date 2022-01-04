@@ -48,7 +48,7 @@ class FieldValue:
         self.value = value % self.f.size
 
     def invert(self):
-        return self.f.invert(self.value)
+        return FieldValue(self.f, self.f.invert(self.value))
 
     def sqrt(self):
         assert self.f.size % 4 == 3

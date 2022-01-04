@@ -4,11 +4,11 @@
 
 # Convert an integer to big-endian with initial zero bytes stripped off.
 def encode_int(n):
-    n = n.to_bytes(8, "big")
-    return n[:-1].lstrip(b"\x00") + n[-1:]
+    return n.to_bytes(32, "big").lstrip(b"\x00")
 
 # Convert a big-endian bytearray version of an int to the int.
 def decode_int(b):
+    # This properly handles an empty array as "0".
     return int.from_bytes(b, "big")
 
 # Data is hierarchy of bytearrays, bytes, lists, and tuples. Convert your

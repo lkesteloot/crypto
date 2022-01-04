@@ -7,7 +7,7 @@ import math
 import random
 import ecc
 import ethsha3
-from field import Field
+from field import Field, FieldValue
 
 V_VALUE_EVEN = 27
 V_VALUE_ODD = 28
@@ -28,6 +28,8 @@ def _compute_z(ec, e):
 # Sign the message "e" with the specified private key. The message can either
 # by bytes, which will be hashed, or the integer hash itself. Returns (v, r, s).
 def sign_message(ec, pr, e):
+    f = Field(ec.n)
+
     z = _compute_z(ec, e)
 
     while True:
@@ -47,6 +49,14 @@ def sign_message(ec, pr, e):
 # Verify the signature of the message "e" with the specified public key.
 # The message can either by bytes, which will be hashed, or the integer hash itself.
 def verify_signature(ec, pu, e, v, r, s):
+    if isinstance(v, FieldValue): v = v.value
+    if isinstance(r, FieldValue): r = r.value
+    if isinstance(s, FieldValue): s = s.value
+
+    f = Field(ec.n)
+    r = f.value(r)
+    s = f.value(s)
+
     z = _compute_z(ec, e)
 
     u1 = z/s
@@ -58,18 +68,30 @@ def verify_signature(ec, pu, e, v, r, s):
 # Recover the public key of the signature. The message can either by bytes,
 # which will be hashed, or the integer hash itself.
 def recover_public_key(ec, e, v, r, s):
+    if isinstance(v, FieldValue): v = v.value
+    if isinstance(r, FieldValue): r = r.value
+    if isinstance(s, FieldValue): s = s.value
+
+    assert isinstance(v, int)
+    assert isinstance(r, int)
+    assert isinstance(s, int)
+
+    f = Field(ec.n)
+    r = f.value(r)
+
     z = _compute_z(ec, e)
 
     x1 = ec.f.value(r)
     y1 = ec.find_y_for_x(x1, v == V_VALUE_EVEN)
     R = ec.value(x1, y1)
-    u1 = -(z/r)
-    u2 = s/r
+    r_inv = r.invert()
+    u1 = -(r_inv*z)
+    u2 = r_inv*s
+
     return ec.G*u1 + R*u2
 
-if __name__ == "__main__":
+def _run_test():
     ec = ecc.EllipticCurve.secp256k1()
-    f = Field(ec.n)
 
     pr, pu = ec.generate_key_pair()
 
@@ -83,3 +105,5 @@ if __name__ == "__main__":
     recovered_pu = recover_public_key(ec, message, v, r, s)
     print(recovered_pu == pu)
 
+if __name__ == "__main__":
+    _run_test()
