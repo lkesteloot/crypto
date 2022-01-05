@@ -77,14 +77,13 @@ class Account:
         return Account(self.nonce, self.balance + amount, self.storage_root, self.code_hash)
 
     def encode(self):
-        # TODO match real Eth encoding.
         v = [rlp.encode_int(self.nonce), rlp.encode_int(self.balance),
                 self.storage_root, self.code_hash]
         return rlp.encode(v)
 
     def __repr__(self):
         return "Account[%d,%d,%s,%s]" % (self.nonce, self.balance,
-                self.storage_root, self.code_hash)
+                self.storage_root.hex(), self.code_hash.hex())
 
     def __eq__(self, o):
         return self.nonce == o.nonce and \
@@ -175,11 +174,32 @@ class BlockHeader:
 
         return BlockHeader(v[0], v[1], v[2], v[3], v[4], v[5], v[6], rlp.decode_int(v[7]),
                 rlp.decode_int(v[8]), rlp.decode_int(v[9]), rlp.decode_int(v[10]),
-                rlp.decode_int(v[11]), v[12], v[13], rlp.decode_int(v[14]))
+                rlp.decode_int(v[11]), v[12], v[13], v[14])
 
     def dump(self, indent=""):
         for key, value in vars(self).items():
             print("%s%s = %s" % (indent, key, dump_string(value, key)))
+
+    def compute_hash(self):
+        v = [
+                self.parentHash,
+                self.ommersHash,
+                self.beneficiary,
+                self.stateRoot,
+                self.transactionsRoot,
+                self.receiptsRoot,
+                self.logsBloom,
+                rlp.encode_int(self.difficulty),
+                rlp.encode_int(self.number),
+                rlp.encode_int(self.gasLimit),
+                rlp.encode_int(self.gasUsed),
+                rlp.encode_int(self.timestamp),
+                self.extraData,
+                self.mixHash,
+                self.nonce,
+        ]
+        b = rlp.encode(v)
+        return ethsha3(b)
 
 class Block:
     # https://ethereum.org/en/developers/docs/blocks/
@@ -216,76 +236,39 @@ class Block:
 
 class EthereumVirtualMachine:
     def __init__(self):
+        # Underlying storage.
         self.hash_table = mpt.HashTable()
-        self.head_block = Block(None, mpt.MerklePatriciaTrie(self.hash_table), [])
 
-    def set_new_head_block(self, block):
-        assert block.previous_block == self.head_block
-        self.head_block = block
+        # Storage of current state.
+        self.state = mpt.MerklePatriciaTrie(self.hash_table)
 
-    # TODO clean up
-    def make_new_account(self):
-        private_key = random.randrange(1, SECP256K1.f.size)
-        public_key = SECP256K1.G*private_key
-        # TODO not sure this is right, can't find formal definition of ECDSAPUBKEY:
-        public_key_bytes = public_key.x.value.to_bytes(32, "big") + public_key.y.value.to_bytes(32, "big")
-        address = ethsha3(public_key_bytes)[-20:] # Right-most 160 bits.
-        print("Just created address 0x" + address.hex())
+        self.head_block_hash = b"\0"*32
 
-        return private_key, address
+    def process_block(self, b):
+        print(b.header.parentHash.hex(), self.head_block_hash.hex())
+        assert b.header.parentHash == self.head_block_hash
 
-    def mine_block(self, old_block, transactions):
-        # Make up a block that wins the mining ether.
-        _, address = self.make_new_account()
+        if b.header.number == 0:
+            assert len(b.transactions) == 0
+            assert b.header.parentHash == b"\0"*32
 
-        mining_transaction = Transaction(mpt.NO_HASH, address, WEI_PER_ETHER)
-        transactions = [mining_transaction] + transactions
+            # Read genesis allocations. See genesis.go.
+            print("Adding genesis transactions...")
+            alloc = rlp.decode(open("genesis_mainnet_alloc.rlp", "rb").read())
+            for address, value in alloc:
+                # Process fake transactions.
+                self.add_value_to_account(address, rlp.decode_int(value))
 
-        state = old_block.state
+        self.head_block_hash = b.header.compute_hash()
 
-        for transaction in transactions:
-            if transaction.from_account == mpt.NO_HASH:
-                if transaction is not mining_transaction:
-                    raise Exception("Can't transfer from null account")
-            else:
-                from_account = state.get(transaction.from_account)
-                assert from_account is not None
-                from_account = Account.decode(from_account)
-                assert from_account.balance >= transaction.amount
-                state = state.set(transaction.from_account, from_account.debit(transaction.amount).encode())
-
-            to_account = state.get(transaction.to_account)
-            if to_account == None:
-                to_account = Account(0, 0, mpt.NO_HASH, mpt.NO_HASH)
-            # TODO use address raw?
-            state = state.set(transaction.to_account, to_account.credit(transaction.amount).encode())
-
-        block = Block(self.head_block, state, transactions)
-
-        return block
-
-    def __repr__(self):
-        return "EVM:\n   Block:\n" + repr(self.head_block)
-
-
-if __name__ == "__main__":
-    a = Account(5, 123, b"abc", b"do-re-mi")
-    b = a.encode()
-    c = Account.decode(b)
-    assert a == c
-    print("Account pass")
-
-    evm = EthereumVirtualMachine()
-    new_block = evm.mine_block(evm.head_block, [])
-    evm.set_new_head_block(new_block)
-    print(evm)
-    t = evm.head_block.transactions[0]
-    _, address = evm.make_new_account()
-    new_block = evm.mine_block(evm.head_block, [
-        Transaction(t.to_account, address, 1),
-        ])
-    evm.set_new_head_block(new_block)
-    print(evm)
-
-    print("EVM pass")
+    def add_value_to_account(self, address, value):
+        assert value >= 0
+        # print("Adding", value, "to", address.hex())
+        b = self.state.get(address)
+        if b is None:
+            account = Account(0, 0, b"", b"")
+        else:
+            account = Account.decode(b)
+        account = account.credit(value)
+        self.state.set(address, account.encode())
 
