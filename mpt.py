@@ -126,6 +126,21 @@ class MerklePatriciaTrie:
         self._fill_repr(parts, self.root, b"", True)
         return "\n".join(parts)
 
+    def __len__(self):
+        return self._get_len(self.root)
+
+    def _get_len(self, r):
+        count = 0
+
+        if r != NO_HASH:
+            v = rlp.decode(self._get_from_store(r))
+            if len(v) == 17:
+                count += 1
+            for i in range(16):
+                count += self._get_len(v[i])
+
+        return count
+
     def _fill_repr(self, parts, r, path, is_byte):
         if r != NO_HASH:
             v = rlp.decode(self._get_from_store(r))
@@ -145,6 +160,9 @@ class HashTable:
     def __init__(self):
         self.m = {}
         self.default_value = object()
+
+    def __len__(self):
+        return len(self.m)
 
     def set(self, k, v):
         # Make sure these are immutable.

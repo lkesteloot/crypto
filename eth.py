@@ -245,7 +245,6 @@ class EthereumVirtualMachine:
         self.head_block_hash = b"\0"*32
 
     def process_block(self, b):
-        print(b.header.parentHash.hex(), self.head_block_hash.hex())
         assert b.header.parentHash == self.head_block_hash
 
         if b.header.number == 0:
@@ -270,5 +269,12 @@ class EthereumVirtualMachine:
         else:
             account = Account.decode(b)
         account = account.credit(value)
-        self.state.set(address, account.encode())
+        self.state = self.state.set(address, account.encode())
+
+    def dump(self, indent=""):
+        print("%sEthereumVirtualMachine:" % indent)
+        indent += INDENT
+        print("%sHash of latest block: %s" % (indent, self.head_block_hash.hex()))
+        print("%sEntries in hash table: %d" % (indent, len(self.hash_table)))
+        print("%sEntries in state: %d" % (indent, len(self.state)))
 
