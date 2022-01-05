@@ -71,9 +71,12 @@ class Account:
         self.code_hash = code_hash
 
     def debit(self, amount):
+        assert amount >= 0
+        assert self.balance >= amount
         return Account(self.nonce, self.balance - amount, self.storage_root, self.code_hash)
 
     def credit(self, amount):
+        assert amount >= 0
         return Account(self.nonce, self.balance + amount, self.storage_root, self.code_hash)
 
     def encode(self):
@@ -100,6 +103,12 @@ class Account:
                 rlp.decode_int(v[0]),
                 rlp.decode_int(v[1]),
                 v[2], v[3])
+
+    # Parse an account hex string to a bytes. The string must represent 20 bytes
+    # (have 40 characters) and may include an initial "0x".
+    @staticmethod
+    def parse_address(hex_address):
+        return int(hex_address, 16).to_bytes(20, "big")
 
 class Transaction:
     def __init__(self, nonce, gasPrice, gasLimit, toAddress, value, data, v, r, s):
@@ -258,18 +267,32 @@ class EthereumVirtualMachine:
                 # Process fake transactions.
                 self.add_value_to_account(address, rlp.decode_int(value))
 
+        for transaction in b.transactions:
+            self.add_value_to_account(transaction.sender, -transaction.value)
+            self.add_value_to_account(transaction.toAddress, transaction.value)
+
         self.head_block_hash = b.header.compute_hash()
 
     def add_value_to_account(self, address, value):
-        assert value >= 0
-        # print("Adding", value, "to", address.hex())
+        account = self.get_account(address)
+        if account is None:
+            account = Account(0, 0, b"", b"")
+        if value > 0:
+            account = account.credit(value)
+        else:
+            account = account.debit(-value)
+        self.state = self.state.set(address, account.encode())
+
+    def get_account(self, address):
         b = self.state.get(address)
         if b is None:
-            account = Account(0, 0, b"", b"")
+            return None
         else:
-            account = Account.decode(b)
-        account = account.credit(value)
-        self.state = self.state.set(address, account.encode())
+            return Account.decode(b)
+
+    def dump_account(self, address):
+        account = self.get_account(address)
+        print("0x%s = %s" % (address.hex(), account))
 
     def dump(self, indent=""):
         print("%sEthereumVirtualMachine:" % indent)
