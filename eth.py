@@ -85,6 +85,8 @@ class Account:
 
     def debit(self, amount):
         assert amount >= 0
+        if self.balance < amount:
+            print("overdraft", self, amount)
         assert self.balance >= amount
         return Account(self.nonce, self.balance - amount, self.storage_root, self.code_hash)
 
@@ -242,7 +244,7 @@ class Block:
 
         header = BlockHeader.from_list(v[0])
         transactions = [Transaction.from_list(t) for t in v[1]]
-        ommers = v[2]
+        ommers = [BlockHeader.from_list(h) for h in v[2]]
 
         return Block(header, transactions, ommers)
 
@@ -278,20 +280,32 @@ class EthereumVirtualMachine:
             print("Adding genesis transactions...")
             alloc = rlp.decode(open("genesis_mainnet_alloc.rlp", "rb").read())
             for address, value in alloc:
-                # Process fake transactions.
+                # Rare case where there are leading zero bytes missing in the binary encoding.
+                if len(address) < 20:
+                    address = b"\0"*(20 - len(address)) + address
+
+                # Process fake transaction.
                 self.add_value_to_account(address, rlp.decode_int(value))
 
         # Process transactions.
         for transaction in b.transactions:
             self.add_value_to_account(transaction.sender, -transaction.value)
             self.add_value_to_account(transaction.toAddress, transaction.value)
+            self.add_value_to_account(bloc.header.beneficiary, transaction.value)
 
-        # Reward miner.
-        r = 5 if b.header.number < BYZANTIUM else 3 if b.header.number < CONSTANTINOPLE else 2
-        r *= WEI_PER_ETHER
-        r = r + len(b.ommers)*r//32
-        # TODO Reward beneficiaries of ommer blocks. See section 11.3 of yellow paper.
-        self.add_value_to_account(b.header.beneficiary, r)
+        # Reward miner of this block.
+        r_block = 5 if b.header.number < BYZANTIUM else 3 if b.header.number < CONSTANTINOPLE else 2
+        r_block *= WEI_PER_ETHER
+        r = r_block + len(b.ommers)*r_block//32
+        if r != 0:
+            self.add_value_to_account(b.header.beneficiary, r)
+
+        # Reward miners of ommer blocks.
+        for u in b.ommers:
+            diff_i = u.number - b.header.number
+            r = r_block + diff_i*r_block//8
+            if r != 0:
+                self.add_value_to_account(u.beneficiary, r)
 
         self.head_block_hash = b.header.compute_hash()
 
@@ -299,6 +313,8 @@ class EthereumVirtualMachine:
         account = self.get_account(address)
         if account is None:
             account = Account(0, 0, b"", b"")
+        if address.endswith(b"\x9b\x68\xc7\x88\x5c"):
+            print("add_value_to_account", "0x" + address.hex(), value, account)
         if value > 0:
             account = account.credit(value)
         else:
