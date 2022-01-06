@@ -18,6 +18,19 @@ STRING_KEYS = set(["extraData"])
 DATE_KEYS = set(["timestamp"])
 PRICE_KEYS = set(["gasPrice", "value"])
 
+# First block number of each named protocol update
+HOMESTEAD = 1150000
+TANGERINE_WHISTLE = 2463000
+SPURIOUS_DRAGON = 2675000
+BYZANTIUM = 4370000
+CONSTANTINOPLE = 7280000
+PETERSBURG = 7280000
+ISTANBUL = 9069000
+MUIR_GLACIER = 9200000
+BERLIN = 12244000
+LONDON = 12965000
+ARROW_GLACIER = 13773000
+
 def all_ascii(b):
     for ch in b:
         if ch < 32 or ch >= 127:
@@ -256,6 +269,7 @@ class EthereumVirtualMachine:
     def process_block(self, b):
         assert b.header.parentHash == self.head_block_hash
 
+        # The genesis block has implicit hard-coded transactions.
         if b.header.number == 0:
             assert len(b.transactions) == 0
             assert b.header.parentHash == b"\0"*32
@@ -267,9 +281,17 @@ class EthereumVirtualMachine:
                 # Process fake transactions.
                 self.add_value_to_account(address, rlp.decode_int(value))
 
+        # Process transactions.
         for transaction in b.transactions:
             self.add_value_to_account(transaction.sender, -transaction.value)
             self.add_value_to_account(transaction.toAddress, transaction.value)
+
+        # Reward miner.
+        r = 5 if b.header.number < BYZANTIUM else 3 if b.header.number < CONSTANTINOPLE else 2
+        r *= WEI_PER_ETHER
+        r = r + len(b.ommers)*r//32
+        # TODO Reward beneficiaries of ommer blocks. See section 11.3 of yellow paper.
+        self.add_value_to_account(b.header.beneficiary, r)
 
         self.head_block_hash = b.header.compute_hash()
 

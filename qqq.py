@@ -12,6 +12,7 @@ a2 = eth.Account.parse_address("5df9b87991262f6ba471f09758cde1c0fc1de734")
 
 for block_list in rlp.decode_multiple(blocks_binary):
     b = eth.Block.from_list(block_list)
+    print(b.header.number)
 
     if b.header.number == 46147:
         e.dump_account(a1)

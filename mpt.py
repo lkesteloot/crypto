@@ -82,8 +82,8 @@ class MerklePatriciaTrie:
         v = rlp.decode(self._get_from_store(root))
 
         if nybble_index == len(key)*2:
-            # Done recursing, find value. TODO make sure size of v is correct.
-            return v[-1]
+            # Done recursing, find value.
+            return v[-1] if len(v) == 17 else None
         else:
             nybble = _get_nybble(key, nybble_index)
             new_root = v[nybble]

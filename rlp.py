@@ -35,7 +35,6 @@ def encode(data):
     else:
         raise Exception("can only RLP-encode bytearray or list")
 
-
 # Decodes a bytearray that was encoded by RLP. Returns a hierarchy of
 # bytearrays and lists, and the number of bytes consumed. Starts at byte "start".
 def _decode(b, start=0):
