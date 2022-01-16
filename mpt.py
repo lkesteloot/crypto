@@ -7,6 +7,7 @@ from ethsha3 import ethsha3, ETHSHA3_LENGTH
 from testing import random_bytes
 
 NO_HASH = b""
+NO_VALUE = b""
 
 # Get the nybble_index for the b bytes object, where 0 means the
 # most significant nybble of the first byte, 1 is the least significant,
@@ -20,9 +21,8 @@ def _get_nybble(b, nybble_index):
 
 # Implementation note: Each node is an RLP-encoded list of 17 elements. The first
 # 16 are the roots of the sub-trees for the nybble in the trie, and the 17th element,
-# if any, is the value for that key. Missing values are represented by not having
-# a 17th element. Missing children (in the first 16 entries) are represented by
-# an empty byte array.
+# if not NO_VALUE, is the value for that key. Missing children (in the first 16 entries)
+# are represented by an empty byte array.
 class MerklePatriciaTrie:
     # key_value_store is a hash map with set(k,v) and get(k) methods.
     # Keys are fixed-length (256-bit) bytes objects.
@@ -40,7 +40,7 @@ class MerklePatriciaTrie:
         new_root = self._set(key, self.root, 0, value)
         return MerklePatriciaTrie(self.key_value_store, new_root)
 
-    # Returns the value for the key (which are both bytes objects), or None
+    # Returns the value for the key (which are both bytes objects), or NO_VALUE
     # if this object does not contain the key.
     def get(self, key):
         assert isinstance(key, bytes)
@@ -50,16 +50,14 @@ class MerklePatriciaTrie:
     # have already been processed. The root is either NO_HASH or a bytes hash.
     def _set(self, key, root, nybble_index, value):
         if root == NO_HASH:
-            v = [NO_HASH]*16
+            v = [NO_HASH]*16 + [NO_VALUE]
         else:
             v = rlp.decode(self._get_from_store(root))
+        assert len(v) == 17
 
         if nybble_index == len(key)*2:
             # Done recursing, set value.
-            if len(v) == 16:
-                v.append(value)
-            else:
-                v[-1] = value
+            v[-1] = value
             new_root = root
         else:
             nybble = _get_nybble(key, nybble_index)
@@ -77,13 +75,14 @@ class MerklePatriciaTrie:
     def _get(self, key, root, nybble_index):
         if root == NO_HASH:
             # Value not in data structure.
-            return None
+            return NO_VALUE
 
         v = rlp.decode(self._get_from_store(root))
+        assert len(v) == 17
 
         if nybble_index == len(key)*2:
             # Done recursing, find value.
-            return v[-1] if len(v) == 17 else None
+            return v[-1]
         else:
             nybble = _get_nybble(key, nybble_index)
             new_root = v[nybble]
@@ -111,7 +110,8 @@ class MerklePatriciaTrie:
     def _fill_items(self, items, r, path, is_byte):
         if r != NO_HASH:
             v = rlp.decode(self._get_from_store(r))
-            if len(v) == 17 and is_byte:
+            assert len(v) == 17
+            if is_byte and v[-1] != NO_VALUE:
                 items.append((path, v[-1]))
             for i in range(16):
                 if is_byte:
@@ -134,7 +134,8 @@ class MerklePatriciaTrie:
 
         if r != NO_HASH:
             v = rlp.decode(self._get_from_store(r))
-            if len(v) == 17:
+            assert len(v) == 17
+            if v[-1] != NO_VALUE:
                 count += 1
             for i in range(16):
                 count += self._get_len(v[i])
@@ -144,7 +145,7 @@ class MerklePatriciaTrie:
     def _fill_repr(self, parts, r, path, is_byte):
         if r != NO_HASH:
             v = rlp.decode(self._get_from_store(r))
-            if len(v) == 17 and is_byte:
+            if is_byte and v[-1] != NO_VALUE:
                 parts.append(path.hex() + " = " + v[-1].hex())
             for i in range(16):
                 if is_byte:
@@ -184,12 +185,12 @@ if __name__ == "__main__":
     k = b"abc"
     v1 = b"xyz"
     m2 = m1.set(k, v1)
-    assert m1.get(k) == None
+    assert m1.get(k) == NO_VALUE
     assert m2.get(k) == v1
 
     v2 = b"ijk"
     m3 = m2.set(k, v2)
-    assert m1.get(k) == None
+    assert m1.get(k) == NO_VALUE
     assert m2.get(k) == v1
     assert m3.get(k) == v2
 
@@ -198,7 +199,7 @@ if __name__ == "__main__":
     q = {}
     for i in range(1000):
         k = random_bytes(0, 64)
-        v = random_bytes(0, 400)
+        v = random_bytes(1, 400)
         q[k] = v
         m = m.set(k, v)
     for k, v in q.items():

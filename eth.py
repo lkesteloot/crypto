@@ -309,11 +309,14 @@ class EthereumVirtualMachine:
 
         self.head_block_hash = b.header.compute_hash()
 
+        print(b.header.stateRoot.hex(), self.state.root.hex())
+        assert b.header.stateRoot == self.state.root
+
     def add_value_to_account(self, address, value):
         account = self.get_account(address)
         if account is None:
             account = Account(0, 0, b"", b"")
-        if address.endswith(b"\x9b\x68\xc7\x88\x5c"):
+        if address.endswith(b"\x9b\x68\xc7\x88\x5c"): # TODO delete
             print("add_value_to_account", "0x" + address.hex(), value, account)
         if value > 0:
             account = account.credit(value)
@@ -323,7 +326,7 @@ class EthereumVirtualMachine:
 
     def get_account(self, address):
         b = self.state.get(address)
-        if b is None:
+        if b is mpt.NO_VALUE:
             return None
         else:
             return Account.decode(b)
