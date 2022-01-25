@@ -277,15 +277,18 @@ class EthereumVirtualMachine:
             assert b.header.parentHash == b"\0"*32
 
             # Read genesis allocations. See genesis.go.
-            print("Adding genesis transactions...")
             alloc = rlp.decode(open("genesis_mainnet_alloc.rlp", "rb").read())
+            print("Adding %d genesis transactions..." % len(alloc))
+            total = 0
             for address, value in alloc:
                 # Rare case where there are leading zero bytes missing in the binary encoding.
-                if len(address) < 20:
-                    address = b"\0"*(20 - len(address)) + address
+                address = address.rjust(20, b"\x00")
 
                 # Process fake transaction.
-                self.add_value_to_account(address, rlp.decode_int(value))
+                value = rlp.decode_int(value)
+                self.add_value_to_account(address, value)
+                total += value
+            print("Total distributed: %d" % (total/WEI_PER_ETHER))
 
         # Process transactions.
         for transaction in b.transactions:
