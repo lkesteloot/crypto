@@ -49,7 +49,7 @@ class MerklePatriciaTrie:
     def set(self, key, value):
         assert isinstance(key, bytes)
         assert isinstance(value, bytes)
-        new_root = self._set(key, self.root, 0, value)
+        new_root = self._set(nybbles.bytes_to_nybbles(key), self.root, 0, value)
         return MerklePatriciaTrie(self.key_value_store, new_root)
 
     # Returns the value for the key (which are both bytes objects), or NO_VALUE
@@ -58,23 +58,28 @@ class MerklePatriciaTrie:
         assert isinstance(key, bytes)
         return self._get(key, self.root, 0)
 
-    # Recurse to set the value for the root. Assumes that "nybble_index" nybbles
-    # have already been processed. The root is either NO_HASH or a bytes hash.
+    # Recurse to set the value for the root.
+    #
+    # key: the key in nybble format (one byte per nybble in the original key).
+    # root: the root we're replacing (NO_HASH or a bytes hash).
+    # nybble_index: the number of nybbles processed so far.
+    # value: the value to insert at this key.
+    # value_is_hash: whether the value is a value or a hash of a sub-tree.
     def _set(self, key, root, nybble_index, value, value_is_hash=False):
         if root == NO_HASH:
-            if nybble_index == len(key)*2 and value_is_hash:
+            if nybble_index == len(key) and value_is_hash:
                 # No key left to encode, just use value.
                 return value
             else:
-                # Make leaf.
-                v = [hexprefix.bytes_to_hp(key, nybble_index, len(key)*2, 0 if value_is_hash else 1),
+                # Make leaf or extension.
+                v = [hexprefix.nybbles_to_hp(key[nybble_index:], 0 if value_is_hash else 1),
                         value]
         else:
             v = self._get_from_store(root)
             if len(v) == 2:
                 # Leaf or extension.
                 old_key_ny = hexprefix.hp_to_nybbles(v[0])
-                new_key_ny = nybbles.bytes_to_nybbles(key, nybble_index)
+                new_key_ny = key[nybble_index:]
                 prefix, old_key_left, new_key_left = nybbles.common_prefix(old_key_ny, new_key_ny)
                 # print("common_prefix", prefix.hex(), old_key_left.hex(), new_key_left.hex())
                 if _is_leaf(v[0]) and old_key_left == b"" and new_key_left == b"":
@@ -93,10 +98,7 @@ class MerklePatriciaTrie:
                             branch[-1] = v[1]
                         else:
                             # Put old value as sub-tree.
-                            old_key = nybbles.nybbles_to_bytes(
-                                    nybbles.bytes_to_nybbles(key, 0, nybble_index) +
-                                    prefix +
-                                    old_key_left)
+                            old_key = key[:nybble_index] + prefix + old_key_left
                             branch[old_key_left[0]] = self._set(old_key, branch[old_key_left[0]],
                                     nybble_index + 1 + len(prefix), v[1],
                                     value_is_hash=_is_extension(v[0]))
@@ -127,13 +129,13 @@ class MerklePatriciaTrie:
             else:
                 assert len(v) == 17
 
-                if nybble_index == len(key)*2:
+                if nybble_index == len(key):
                     # Done recursing, set value.
                     assert not value_is_hash # Not sure if this can happen.
                     v[-1] = value
                     new_root = root
                 else:
-                    nybble = _get_nybble(key, nybble_index)
+                    nybble = key[nybble_index]
                     old_root = v[nybble]
                     assert not value_is_hash # Not sure if this can happen.
                     new_root = self._set(key, old_root, nybble_index + 1, value, value_is_hash=value_is_hash)
@@ -295,7 +297,7 @@ class HashTable:
         else:
             return v
 
-def _my_tests():
+def _unit_tests():
     hash_table = HashTable()
 
     v1 = b"xyz"
@@ -337,42 +339,60 @@ def _my_tests():
     assert m3.get(k2) == v2
 
     # Replacing an extension.
-    print("---------------------")
+    # print("---------------------")
     k1 = b"\x12\x34\x56"
     k2 = k1[:2] + b"\x78"
     m2 = m1.set(k1, v1) # Makes a leaf
     m3 = m2.set(k2, v2) # Make extension and two leaves.
-    m3.dump()
+    # m3.dump()
     assert m3.get(k1) == v1
     assert m3.get(k2) == v2
 
-    print("---------------------")
+    # print("---------------------")
     k3 = k1[:1] + b"\x9A"
     m3 = m3.set(k3, v3) # Break extension.
-    m3.dump()
+    # m3.dump()
     assert m3.get(k1) == v1
     assert m3.get(k2) == v2
     assert m3.get(k3) == v3
 
-    print("All good.")
-    import sys
-    # sys.exit(0)
+    print("Unit tests good.")
 
-
+def _random_tests():
     # Random insertions.
-    m = MerklePatriciaTrie(hash_table)
-    q = {}
-    for i in range(1000):
-        k = random_bytes(0, 64)
-        v = random_bytes(1, 400)
-        q[k] = v
-        m = m.set(k, v)
-    for k, v in q.items():
-        if m.get(k) != v:
-            print(k.hex(), m.get(k).hex(), v.hex())
-        assert m.get(k) == v
+    while True:
+        hash_table = HashTable()
+        m = MerklePatriciaTrie(hash_table)
+        q = {}
+        kvs = []
+        for i in range(1000):
+            k = random_bytes(0, 64)
+            v = random_bytes(1, 400)
+            kvs.append((k, v))
+            q[k] = v
+            m = m.set(k, v)
+        for k, v in q.items():
+            if m.get(k) != v:
+                print(k.hex(), m.get(k).hex(), v.hex())
+                # Reconstruct tree, dumping each step.
+                hash_table2 = HashTable()
+                m2 = MerklePatriciaTrie(hash_table2)
+                for k, v in kvs:
+                    print("------------------------------------")
+                    print("Inserting", k.hex(), v.hex())
+                    m2 = m2.set(k, v)
+                    m2.dump()
+                import sys
+                sys.exit(0)
 
-    print("All good.")
+            assert m.get(k) == v
+        break
+
+    print("Random tests good.")
+
+def _my_tests():
+    _unit_tests()
+    _random_tests()
 
 def _load_standard_test(filename):
     with open("../../others/eth_tests/TrieTests/" + filename) as f:
@@ -418,4 +438,4 @@ def _standard_tests():
 
 if __name__ == "__main__":
     _my_tests()
-    # _standard_tests()
+    _standard_tests()
