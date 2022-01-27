@@ -40,22 +40,27 @@ class MerklePatriciaTrie:
     # Keys are fixed-length (256-bit) bytes objects.
     # Values are arbitrary bytes objects. The get() method throws on unknown key.
     # The root, if specified, is a 256-bit bytes object.
-    def __init__(self, key_value_store, root=NO_HASH):
+    def __init__(self, key_value_store, root=NO_HASH, secured=False):
         self.key_value_store = key_value_store
         self.root = root
+        self.secured = secured
 
     # key and value are arbitrary bytes objects. Does not modify the current
     # object -- returns a new MerklePatriciaTrie object.
     def set(self, key, value):
         assert isinstance(key, bytes)
         assert isinstance(value, bytes)
+        if self.secured:
+            key = ethsha3(key)
         new_root = self._set(nybbles.bytes_to_nybbles(key), self.root, 0, value)
-        return MerklePatriciaTrie(self.key_value_store, new_root)
+        return MerklePatriciaTrie(self.key_value_store, new_root, self.secured)
 
     # Returns the value for the key (which are both bytes objects), or NO_VALUE
     # if this object does not contain the key.
     def get(self, key):
         assert isinstance(key, bytes)
+        if self.secured:
+            key = ethsha3(key)
         return self._get(key, self.root, 0)
 
     # Recurse to set the value for the root.
@@ -411,7 +416,7 @@ def _standard_test(filename, secured, kv):
 
     for name, test in tests.items():
         store = HashTable()
-        trie = MerklePatriciaTrie(store)
+        trie = MerklePatriciaTrie(store, NO_VALUE, secured)
 
         if kv:
             items = test["in"].items()
@@ -430,9 +435,9 @@ def _standard_test(filename, secured, kv):
             print(f"    {name}: failed ({actual.hex()} != {expected.hex()})")
 
 def _standard_tests():
-    #_standard_test("hex_encoded_securetrie_test.json", True, True)
-    #_standard_test("trietest_secureTrie.json", True, False)
-    #_standard_test("trieanyorder_secureTrie.json", True, True)
+    _standard_test("hex_encoded_securetrie_test.json", True, True)
+    _standard_test("trietest_secureTrie.json", True, False)
+    _standard_test("trieanyorder_secureTrie.json", True, True)
     _standard_test("trietest.json", False, False)
     _standard_test("trieanyorder.json", False, True)
 
