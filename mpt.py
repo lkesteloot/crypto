@@ -6,12 +6,15 @@ import json
 import rlp
 import hexprefix
 import nybbles
-from ethsha3 import ethsha3, ETHSHA3_LENGTH
+import ethsha3
 from testing import random_bytes
 
 NO_HASH = b""
 NO_VALUE = b""
 INDENT = "    "
+
+# This is the root of an empty tree (secured or not).
+EMPTY_TREE_ROOT = bytes.fromhex("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
 # Get the nybble_index for the b bytes object, where 0 means the
 # most significant nybble of the first byte, 1 is the least significant,
@@ -51,7 +54,7 @@ class MerklePatriciaTrie:
         assert isinstance(key, bytes)
         assert isinstance(value, bytes)
         if self.secured:
-            key = ethsha3(key)
+            key = ethsha3.hash(key)
         new_root = self._set(nybbles.bytes_to_nybbles(key), self.root, 0, value)
         return MerklePatriciaTrie(self.key_value_store, new_root, self.secured)
 
@@ -60,7 +63,7 @@ class MerklePatriciaTrie:
     def get(self, key):
         assert isinstance(key, bytes)
         if self.secured:
-            key = ethsha3(key)
+            key = ethsha3.hash(key)
         return self._get(key, self.root, 0)
 
     # Recurse to set the value for the root.
@@ -191,10 +194,10 @@ class MerklePatriciaTrie:
     # optimizing) or stores it by the hash of its RLP.
     def _put_in_store(self, v, optimize):
         k = rlp.encode(v)
-        if optimize and len(k) < ETHSHA3_LENGTH:
+        if optimize and len(k) < ethsha3.ETHSHA3_LENGTH:
             return v
         else:
-            h = ethsha3(k)
+            h = ethsha3.hash(k)
             self.key_value_store.set(h, k)
             return h
 

@@ -7,7 +7,7 @@ import ecc
 import rlp
 import mpt
 import ecdsa
-from ethsha3 import ethsha3
+import ethsha3
 
 WEI_PER_ETHER = 10**18
 INDENT = "    "
@@ -17,6 +17,8 @@ SECP256K1 = ecc.EllipticCurve.secp256k1()
 STRING_KEYS = set(["extraData"])
 DATE_KEYS = set(["timestamp"])
 PRICE_KEYS = set(["gasPrice", "value"])
+
+EMPTY_ADDRESS = bytes.fromhex("0000000000000000000000000000000000000000")
 
 # First block number of each named protocol update
 HOMESTEAD = 1150000
@@ -69,7 +71,7 @@ def dump_string(v, key):
 def public_key_to_address(pu):
     # TODO not sure this is right, can't find formal definition of ECDSAPUBKEY:
     public_key_bytes = pu.x.value.to_bytes(32, "big") + pu.y.value.to_bytes(32, "big")
-    return ethsha3(public_key_bytes)[-20:] # Right-most 160 bits.
+    return ethsha3.hash(public_key_bytes)[-20:] # Right-most 160 bits.
 
 class Account:
     def __init__(self, nonce, balance, storage_root, code_hash):
@@ -158,7 +160,7 @@ class Transaction:
         ]
         assert self.v == 27 or self.v == 28 # else we have to add three things to "data".
         encoded_data = rlp.encode(data)
-        return ethsha3(encoded_data)
+        return ethsha3.hash(encoded_data)
 
     def compute_sender(self):
         e = int.from_bytes(self.transaction_hash(), "big")
@@ -223,7 +225,7 @@ class BlockHeader:
                 self.nonce,
         ]
         b = rlp.encode(v)
-        return ethsha3(b)
+        return ethsha3.hash(b)
 
 class Block:
     # https://ethereum.org/en/developers/docs/blocks/
@@ -263,8 +265,8 @@ class EthereumVirtualMachine:
         # Underlying storage.
         self.hash_table = mpt.HashTable()
 
-        # Storage of current state.
-        self.state = mpt.MerklePatriciaTrie(self.hash_table)
+        # Storage of state of accounts.
+        self.state = mpt.MerklePatriciaTrie(self.hash_table, mpt.NO_HASH, True)
 
         self.head_block_hash = b"\0"*32
 
@@ -274,7 +276,11 @@ class EthereumVirtualMachine:
         # The genesis block has implicit hard-coded transactions.
         if b.header.number == 0:
             assert len(b.transactions) == 0
-            assert b.header.parentHash == b"\0"*32
+            assert len(b.ommers) == 0
+            assert b.header.parentHash == ethsha3.ZERO_HASH
+            assert b.header.beneficiary == EMPTY_ADDRESS
+            assert b.header.transactionsRoot == mpt.EMPTY_TREE_ROOT
+            assert b.header.receiptsRoot == mpt.EMPTY_TREE_ROOT
 
             # Read genesis allocations. See genesis.go.
             alloc = rlp.decode(open("genesis_mainnet_alloc.rlp", "rb").read())
@@ -288,19 +294,20 @@ class EthereumVirtualMachine:
                 value = rlp.decode_int(value)
                 self.add_value_to_account(address, value)
                 total += value
-            print("Total distributed: %d" % (total/WEI_PER_ETHER))
+            print("Total distributed: %d eth" % (total/WEI_PER_ETHER))
 
         # Process transactions.
         for transaction in b.transactions:
             self.add_value_to_account(transaction.sender, -transaction.value)
             self.add_value_to_account(transaction.toAddress, transaction.value)
-            self.add_value_to_account(bloc.header.beneficiary, transaction.value)
+            # TODO Must also pay beneficiary, but to do this we must calculate the cost
+            # of running the transaction.
 
         # Reward miner of this block.
         r_block = 5 if b.header.number < BYZANTIUM else 3 if b.header.number < CONSTANTINOPLE else 2
         r_block *= WEI_PER_ETHER
         r = r_block + len(b.ommers)*r_block//32
-        if r != 0:
+        if b.header.beneficiary != EMPTY_ADDRESS and r != 0:
             self.add_value_to_account(b.header.beneficiary, r)
 
         # Reward miners of ommer blocks.
@@ -318,9 +325,7 @@ class EthereumVirtualMachine:
     def add_value_to_account(self, address, value):
         account = self.get_account(address)
         if account is None:
-            account = Account(0, 0, b"", b"")
-        if address.endswith(b"\x9b\x68\xc7\x88\x5c"): # TODO delete
-            print("add_value_to_account", "0x" + address.hex(), value, account)
+            account = Account(0, 0, mpt.EMPTY_TREE_ROOT, ethsha3.EMPTY_STRING_HASH)
         if value > 0:
             account = account.credit(value)
         else:
