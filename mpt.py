@@ -305,6 +305,17 @@ class HashTable:
         else:
             return v
 
+    def as_string_dict(self):
+        m = {}
+        for k, v in self.m.items():
+            m[k.hex()] = v.hex()
+        return m
+
+    def replace_with_string_dict(self, m):
+        self.m.clear()
+        for k, v in m.items():
+            self.m[bytes.fromhex(k)] = bytes.fromhex(v)
+
 def _unit_tests():
     hash_table = HashTable()
 

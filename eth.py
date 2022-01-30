@@ -2,6 +2,7 @@
 # Various data structures for Ethereum.
 
 from datetime import datetime
+import json
 import random
 import ecc
 import rlp
@@ -283,9 +284,16 @@ class EthereumVirtualMachine:
         # Storage of state of accounts.
         self.state = mpt.MerklePatriciaTrie(self.hash_table, mpt.NO_HASH, True)
 
-        self.head_block_hash = b"\0"*32
+        # The number of block we most recently processed.
+        self.head_block_number = None
+
+        self.head_block_hash = ethsha3.ZERO_HASH
+
+    def should_skip_block(self, number):
+        return self.head_block_number is not None and number <= self.head_block_number
 
     def process_block(self, b):
+        assert self.head_block_number is None or b.header.number == self.head_block_number + 1
         assert b.header.parentHash == self.head_block_hash
 
         print(b.header.number, len(b.transactions), len(b.ommers), b.header.beneficiary == EMPTY_ADDRESS) # TODO delete
@@ -341,7 +349,29 @@ class EthereumVirtualMachine:
         self.head_block_hash = b.header.compute_hash()
 
         print("state", "official", b.header.stateRoot.hex(), "mine", self.state.root.hex()) # TODO delete
-        #assert b.header.stateRoot == self.state.root
+        assert b.header.stateRoot == self.state.root
+        self.head_block_number = b.header.number
+
+    def save_snapshot(self, pathname):
+        snapshot = {
+                "head_block_number": self.head_block_number,
+                "head_block_hash": self.head_block_hash.hex(),
+                "state_hash": self.state.root.hex(),
+                "hash_table": self.hash_table.as_string_dict(),
+        }
+
+        with open(pathname, "w") as f:
+            json.dump(snapshot, f)
+
+    def load_snapshot(self, pathname):
+        with open(pathname) as f:
+            snapshot = json.load(f)
+
+        self.head_block_number = snapshot["head_block_number"]
+        self.head_block_hash = bytes.fromhex(snapshot["head_block_hash"])
+        self.hash_table.replace_with_string_dict(snapshot["hash_table"])
+        state_hash = bytes.fromhex(snapshot["state_hash"])
+        self.state = mpt.MerklePatriciaTrie(self.hash_table, state_hash, True)
 
     def add_value_to_account(self, address, value):
         account = self.get_account(address)
