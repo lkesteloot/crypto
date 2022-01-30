@@ -35,6 +35,9 @@ LONDON = 12965000
 ARROW_GLACIER = 13773000
 
 # Cost of various transaction components.
+Gtxdatazero = 4
+Gtxdatanonzero = 68 # Pre-Istanbul, see https://eips.ethereum.org/EIPS/eip-2028
+GtxdatanonzeroIstanbul = 16
 Gtransaction = 21000
 
 def all_ascii(b):
@@ -179,8 +182,14 @@ class Transaction:
         # assert ecdsa.verify_signature(SECP256K1, pu, e, self.v, self.r, self.s)
         return public_key_to_address(pu)
 
-    def compute_gas(self):
-        return Gtransaction
+    def compute_gas(self, block_number):
+        is_istanbul = block_number >= ISTANBUL
+        txdatanonzero = GtxdatanonzeroIstanbul if is_istanbul else Gtxdatanonzero
+
+        gas = Gtransaction
+        for i in self.data:
+            gas += Gtxdatazero if i == 0 else txdatanonzero
+        return gas
 
     def dump(self, indent=""):
         print(indent + "Transaction:")
@@ -326,13 +335,14 @@ class EthereumVirtualMachine:
         # Process transactions.
         block_gas = 0
         for transaction in b.transactions:
-            gas = transaction.compute_gas()
+            gas = transaction.compute_gas(b.header.number)
             assert gas <= transaction.gasLimit
             block_gas += gas
             gasFee = gas*transaction.gasPrice
             self.add_value_to_account(transaction.sender, -(transaction.value + gasFee), True)
             self.add_value_to_account(transaction.toAddress, transaction.value, False)
             self.add_value_to_account(b.header.beneficiary, gasFee, False)
+        print("block gas", block_gas, b.header.gasUsed)
         assert block_gas == b.header.gasUsed
 
         # Reward miner of this block.
