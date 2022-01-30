@@ -89,16 +89,18 @@ class Account:
         self.storage_root = storage_root
         self.code_hash = code_hash
 
-    def debit(self, amount):
+    def debit(self, amount, bumpNonce):
         assert amount >= 0
         if self.balance < amount:
             print("overdraft", self, amount)
         assert self.balance >= amount
-        return Account(self.nonce, self.balance - amount, self.storage_root, self.code_hash)
+        return Account(self.nonce + (1 if bumpNonce else 0),
+                self.balance - amount, self.storage_root, self.code_hash)
 
-    def credit(self, amount):
+    def credit(self, amount, bumpNonce):
         assert amount >= 0
-        return Account(self.nonce, self.balance + amount, self.storage_root, self.code_hash)
+        return Account(self.nonce + (1 if bumpNonce else 0),
+                self.balance + amount, self.storage_root, self.code_hash)
 
     def encode(self):
         v = [rlp.encode_int(self.nonce), rlp.encode_int(self.balance),
@@ -317,7 +319,7 @@ class EthereumVirtualMachine:
 
                 # Process fake transaction.
                 value = rlp.decode_int(value)
-                self.add_value_to_account(address, value)
+                self.add_value_to_account(address, value, False)
                 total += value
             print("Total eth distributed: %d eth" % (total/WEI_PER_ETHER))
 
@@ -327,9 +329,10 @@ class EthereumVirtualMachine:
             gas = transaction.compute_gas()
             assert gas <= transaction.gasLimit
             block_gas += gas
-            self.add_value_to_account(transaction.sender, -transaction.value)
-            self.add_value_to_account(transaction.toAddress, transaction.value)
-            self.add_value_to_account(b.header.beneficiary, gas*transaction.gasPrice)
+            gasFee = gas*transaction.gasPrice
+            self.add_value_to_account(transaction.sender, -(transaction.value + gasFee), True)
+            self.add_value_to_account(transaction.toAddress, transaction.value, False)
+            self.add_value_to_account(b.header.beneficiary, gasFee, False)
         assert block_gas == b.header.gasUsed
 
         # Reward miner of this block.
@@ -337,14 +340,14 @@ class EthereumVirtualMachine:
         r_block *= WEI_PER_ETHER
         r = r_block + len(b.ommers)*r_block//32
         if b.header.number != 0 and r != 0:
-            self.add_value_to_account(b.header.beneficiary, r)
+            self.add_value_to_account(b.header.beneficiary, r, False)
 
         # Reward miners of ommer blocks.
         for u in b.ommers:
             diff_i = u.number - b.header.number
             r = r_block + diff_i*r_block//8
             if r != 0:
-                self.add_value_to_account(u.beneficiary, r)
+                self.add_value_to_account(u.beneficiary, r, False)
 
         self.head_block_hash = b.header.compute_hash()
 
@@ -373,14 +376,14 @@ class EthereumVirtualMachine:
         state_hash = bytes.fromhex(snapshot["state_hash"])
         self.state = mpt.MerklePatriciaTrie(self.hash_table, state_hash, True)
 
-    def add_value_to_account(self, address, value):
+    def add_value_to_account(self, address, value, bumpNonce):
         account = self.get_account(address)
         if account is None:
             account = Account(0, 0, mpt.EMPTY_TREE_ROOT, ethsha3.EMPTY_STRING_HASH)
         if value > 0:
-            account = account.credit(value)
+            account = account.credit(value, bumpNonce)
         else:
-            account = account.debit(-value)
+            account = account.debit(-value, bumpNonce)
         self.state = self.state.set(address, account.encode())
 
     def get_account(self, address):

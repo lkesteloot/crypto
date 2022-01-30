@@ -38,7 +38,7 @@ for block_list in rlp.decode_multiple(blocks_binary):
         e.dump_account(a2)
         e.dump_account(be)
         e.dump()
-        break
+        #break
 
     if b.header.number % 1000 == 0:
         e.save_snapshot(SNAPSHOT_PATHNAME)
