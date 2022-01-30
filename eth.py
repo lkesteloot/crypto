@@ -33,6 +33,9 @@ BERLIN = 12244000
 LONDON = 12965000
 ARROW_GLACIER = 13773000
 
+# Cost of various transaction components.
+Gtransaction = 21000
+
 def all_ascii(b):
     for ch in b:
         if ch < 32 or ch >= 127:
@@ -103,7 +106,12 @@ class Account:
 
     def __repr__(self):
         return "Account[%d,%d,%s,%s]" % (self.nonce, self.balance,
-                self.storage_root.hex(), self.code_hash.hex())
+                "<empty storage>"
+                    if self.storage_root == mpt.EMPTY_TREE_ROOT
+                    else self.storage_root.hex(),
+                "<no code>"
+                    if self.code_hash == ethsha3.EMPTY_STRING_HASH
+                    else self.code_hash.hex())
 
     def __eq__(self, o):
         return self.nonce == o.nonce and \
@@ -168,7 +176,12 @@ class Transaction:
         # assert ecdsa.verify_signature(SECP256K1, pu, e, self.v, self.r, self.s)
         return public_key_to_address(pu)
 
+    def compute_gas(self):
+        return Gtransaction
+
     def dump(self, indent=""):
+        print(indent + "Transaction:")
+        indent += INDENT
         for key, value in vars(self).items():
             print("%s%s = %s" % (indent, key, dump_string(value, key)))
 
@@ -203,6 +216,8 @@ class BlockHeader:
                 rlp.decode_int(v[11]), v[12], v[13], v[14])
 
     def dump(self, indent=""):
+        print(indent + "Block header:")
+        indent += INDENT
         for key, value in vars(self).items():
             print("%s%s = %s" % (indent, key, dump_string(value, key)))
 
@@ -273,6 +288,8 @@ class EthereumVirtualMachine:
     def process_block(self, b):
         assert b.header.parentHash == self.head_block_hash
 
+        print(b.header.number, len(b.transactions), len(b.ommers), b.header.beneficiary == EMPTY_ADDRESS) # TODO delete
+
         # The genesis block has implicit hard-coded transactions.
         if b.header.number == 0:
             assert len(b.transactions) == 0
@@ -294,20 +311,24 @@ class EthereumVirtualMachine:
                 value = rlp.decode_int(value)
                 self.add_value_to_account(address, value)
                 total += value
-            print("Total distributed: %d eth" % (total/WEI_PER_ETHER))
+            print("Total eth distributed: %d eth" % (total/WEI_PER_ETHER))
 
         # Process transactions.
+        block_gas = 0
         for transaction in b.transactions:
+            gas = transaction.compute_gas()
+            assert gas <= transaction.gasLimit
+            block_gas += gas
             self.add_value_to_account(transaction.sender, -transaction.value)
             self.add_value_to_account(transaction.toAddress, transaction.value)
-            # TODO Must also pay beneficiary, but to do this we must calculate the cost
-            # of running the transaction.
+            self.add_value_to_account(b.header.beneficiary, gas*transaction.gasPrice)
+        assert block_gas == b.header.gasUsed
 
         # Reward miner of this block.
         r_block = 5 if b.header.number < BYZANTIUM else 3 if b.header.number < CONSTANTINOPLE else 2
         r_block *= WEI_PER_ETHER
         r = r_block + len(b.ommers)*r_block//32
-        if b.header.beneficiary != EMPTY_ADDRESS and r != 0:
+        if b.header.number != 0 and r != 0:
             self.add_value_to_account(b.header.beneficiary, r)
 
         # Reward miners of ommer blocks.
@@ -319,8 +340,8 @@ class EthereumVirtualMachine:
 
         self.head_block_hash = b.header.compute_hash()
 
-        print(b.header.stateRoot.hex(), self.state.root.hex())
-        assert b.header.stateRoot == self.state.root
+        print("state", "official", b.header.stateRoot.hex(), "mine", self.state.root.hex()) # TODO delete
+        #assert b.header.stateRoot == self.state.root
 
     def add_value_to_account(self, address, value):
         account = self.get_account(address)
@@ -348,5 +369,5 @@ class EthereumVirtualMachine:
         indent += INDENT
         print("%sHash of latest block: %s" % (indent, self.head_block_hash.hex()))
         print("%sEntries in hash table: %d" % (indent, len(self.hash_table)))
-        print("%sEntries in state: %d" % (indent, len(self.state)))
+        # print("%sEntries in state: %d" % (indent, len(self.state)))
 
