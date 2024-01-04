@@ -1,0 +1,31 @@
+
+To do next:
+
+- I think I might be done with this. The next step is to emulate the bytecode. This will
+    be very time-consuming and it'll be hard to know if I got it right. The yellow paper
+    section on this is hard to read and I no longer even know what applies when
+    (in the chain's history). I don't think I'll learn much from it. And finally, because
+    it's all in Python, it'll be extra hard to get right and it'll be *super* slow to execute
+    on the real chain.
+    - Should I have used a different language here?
+        - V might be fun.
+        - Zig? Seems too low-level. And seems ... unattractive?
+        - C++? Makes the most sense probably.
+
+- First contract creation on block 46402.
+
+- Continue unit tests for trie:
+    - Handle None as value, which deletes object.
+        - Maybe not necessary for store hash comparison.
+
+- Looks like empty tree should have non-empty root hash. See comment
+    in eth_execution-specs/src/ethereum/frontier/trie.py
+
+- Implement bytecode.
+
+Reference:
+
+- Unit tests for trie:
+    https://github.com/ethereum/tests/tree/82f6a5a7362e703a64dce303dd0c30f264b8195f/TrieTests
+    https://github.com/ethereum/execution-specs/blob/master/tests/frontier/test_trie.py
+
